@@ -40,7 +40,7 @@ function isPathAllowedForRole(role: string | null, pathname: string | null) {
 
   // INVENTARIO → activos, rutas, población, entregas/recogidas y reportes
   if (r === ROLE_INVENTORY) {
-    return isAllowed(['/assets', '/routes', '/people', '/handover','/reports']);
+    return isAllowed(['/assets', '/routes', '/people', '/entregas','/reports']);
   }
 
   // ADMINISTRATIVO → mismos módulos que inventario (ajusta si quieres restringir)
