@@ -8,12 +8,12 @@ import { PropsWithChildren, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 
 const ALL_LINKS = [
-  { href: '/assets',   label: 'Inventario',           key: 'assets' },
-  { href: '/entregas', label: 'Entregas y Recogidas', key: 'handover' },
-  { href: '/routes',   label: 'Rutas',                key: 'routes' },
-  { href: '/people',   label: 'Población',            key: 'people' },
-  { href: '/reportes', label: 'Reportes',             key: 'reports' },
-  { href: '/settings', label: 'Configuraciones',      key: 'settings' },
+  { href: '/assets',   label: 'Inventario',            key: 'assets' },
+  { href: '/entregas', label: 'Entregas y Recogidas',  key: 'handover' },
+  { href: '/routes',   label: 'Rutas',                 key: 'routes' },
+  { href: '/people',   label: 'Población',             key: 'people' },
+  { href: '/reportes', label: 'Reportes',              key: 'reports' },
+  { href: '/settings', label: 'Configuraciones',       key: 'settings' },
 ];
 
 type User = {
@@ -38,24 +38,28 @@ function initialsFrom(name?: string | null, email?: string | null) {
 function getNavLinksForRole(role?: string | null) {
   const r = (role || '').toUpperCase();
 
-  // CONDUCTOR → solo Rutas
+  // Solo Rutas para CONDUCTOR
   if (r === 'CONDUCTOR') {
     return ALL_LINKS.filter((l) => l.href === '/routes');
   }
 
-  // INVENTARIO → Inventario, Rutas, Entregas, Población, Reportes
+  // INVENTARIO → activos, entregas/recogidas, rutas, población y reportes
   if (r === 'INVENTARIO') {
     return ALL_LINKS.filter((l) =>
-      ['/assets', '/routes', '/entregas', '/people', '/reportes'].includes(l.href),
+      ['/assets', '/entregas', '/routes', '/people', '/reportes'].includes(
+        l.href,
+      ),
     );
   }
 
-  // ADMINISTRATIVO → solo Inventario (si quieres darle más, amplías aquí)
+  // ADMINISTRATIVO → inventario + reportes
   if (r === 'ADMINISTRATIVO') {
-    return ALL_LINKS.filter((l) => l.href === '/assets');
+    return ALL_LINKS.filter((l) =>
+      ['/assets', '/reportes'].includes(l.href),
+    );
   }
 
-  // Otros roles: todo
+  // Otros roles: todos
   return ALL_LINKS;
 }
 
@@ -69,8 +73,10 @@ export default function AppShell({ children }: PropsWithChildren) {
 
   const isLogin = pathname === '/login';
 
+  // Proteger rutas: si no hay token → /login.
+  // Si hay token, trae /api/auth/me.
   useEffect(() => {
-    // En /login no protegemos nada
+    // Si estamos en /login, no protegemos nada
     if (isLogin) {
       setLoadingUser(false);
       return;
@@ -88,36 +94,45 @@ export default function AppShell({ children }: PropsWithChildren) {
       try {
         const res = await api.get('/api/auth/me');
         const me = res.data as User;
-
         setUser(me);
 
-        // Persistimos el rol para otros componentes (p. ej. auth-guard)
+        const roleUpper = (me.role || '').toUpperCase();
+
+        // Persistimos rol para el Guard (auth-guard)
         if (typeof window !== 'undefined') {
-          localStorage.setItem('user_role', (me.role || '').toUpperCase());
+          localStorage.setItem('user_role', roleUpper);
         }
 
-        // 🔹 Validar si la ruta actual está permitida para este rol
-        const allowedLinks = getNavLinksForRole(me.role);
-        const allowedPaths = allowedLinks.map((l) => l.href);
-
-        if (allowedPaths.length > 0) {
-          const isAllowed = allowedPaths.some(
-            (base) =>
-              pathname === base || pathname.startsWith(base + '/'),
+        // 🔹 Redirecciones según rol (coherentes con el menú)
+        if (roleUpper === 'CONDUCTOR') {
+          const allowed = ['/routes'];
+          const isAllowed = allowed.some(
+            (base) => pathname === base || pathname.startsWith(base + '/'),
           );
-
           if (!isAllowed) {
-            // Redirige a la primera ruta permitida para ese rol
-            router.replace(allowedLinks[0].href);
-            return;
+            router.replace('/routes');
+          }
+        } else if (roleUpper === 'INVENTARIO') {
+          const allowed = ['/assets', '/entregas', '/routes', '/people', '/reportes'];
+          const isAllowed = allowed.some(
+            (base) => pathname === base || pathname.startsWith(base + '/'),
+          );
+          if (!isAllowed) {
+            router.replace('/assets');
+          }
+        } else if (roleUpper === 'ADMINISTRATIVO') {
+          const allowed = ['/assets', '/reportes'];
+          const isAllowed = allowed.some(
+            (base) => pathname === base || pathname.startsWith(base + '/'),
+          );
+          if (!isAllowed) {
+            router.replace('/assets');
           }
         }
       } catch (err) {
         // Token inválido/expirado → limpiar y mandar a login
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('user_role');
-        }
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_role');
         router.replace('/login');
       } finally {
         setLoadingUser(false);
@@ -151,11 +166,12 @@ export default function AppShell({ children }: PropsWithChildren) {
     }
   };
 
-  // En /login no mostramos el shell
+  // Si estamos en /login, no mostramos el shell, solo el contenido
   if (isLogin) {
     return <>{children}</>;
   }
 
+  // Mientras se valida la sesión, un pequeño loader
   if (loadingUser) {
     return (
       <div className="min-h-dvh grid place-items-center bg-slate-50 text-slate-600 text-sm">
@@ -169,7 +185,7 @@ export default function AppShell({ children }: PropsWithChildren) {
   const displayRole = user?.role || 'Administrativo';
   const initials = initialsFrom(user?.name, user?.email);
 
-  // Home según el primer link permitido
+  // 🔹 Home del logo según lo que pueda ver el usuario
   const homeHref = navLinks[0]?.href || '/assets';
 
   return (
@@ -227,7 +243,7 @@ export default function AppShell({ children }: PropsWithChildren) {
             </div>
           </div>
 
-          <nav className="mt-3 flex gap-1 overflow-x-auto">
+          <nav className="mt-3 flex gap-1">
             {navLinks.map((l) => {
               const active =
                 pathname === l.href || pathname.startsWith(l.href + '/');
@@ -235,7 +251,7 @@ export default function AppShell({ children }: PropsWithChildren) {
                 <Link
                   key={l.href}
                   href={l.href}
-                  className={`rounded-full px-3 py-1.5 text-sm whitespace-nowrap ${
+                  className={`rounded-full px-3 py-1.5 text-sm ${
                     active
                       ? 'bg-sky-900 text-white dark:bg-white dark:text-slate-900'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'

@@ -13,10 +13,19 @@ type GuardProps = {
   children: ReactNode;
 };
 
+// Home por rol
 const HOME_BY_ROLE: Record<string, string> = {
   [ROLE_DRIVER]: '/routes',
   [ROLE_INVENTORY]: '/assets',
   [ROLE_ADMIN]: '/assets',
+};
+
+// Rutas permitidas por rol (prefijos)
+const ALLOWED_PATHS_BY_ROLE: Record<string, string[]> = {
+  [ROLE_DRIVER]: ['/routes'],
+  [ROLE_INVENTORY]: ['/assets', '/routes', '/people', '/entregas', '/reports'],
+  // Si quieres que el admin vea más cosas, agrégalas aquí
+  [ROLE_ADMIN]: ['/assets', '/reports'],
 };
 
 function getHomeForRole(role?: string | null) {
@@ -28,28 +37,15 @@ function isPathAllowedForRole(role: string | null, pathname: string | null) {
   if (!pathname) return true;
   const r = (role || '').toUpperCase();
 
-  const isAllowed = (bases: string[]) =>
-    bases.some(
-      (base) => pathname === base || pathname.startsWith(base + '/'),
-    );
-
-  // CONDUCTOR → solo rutas
-  if (r === ROLE_DRIVER) {
-    return isAllowed(['/routes']);
+  const bases = ALLOWED_PATHS_BY_ROLE[r];
+  if (!bases) {
+    // Rol desconocido → sin restricciones adicionales
+    return true;
   }
 
-  // INVENTARIO → activos, rutas, población, entregas/recogidas y reportes
-  if (r === ROLE_INVENTORY) {
-    return isAllowed(['/assets', '/routes', '/people', '/entregas','/reports']);
-  }
-
-  // ADMINISTRATIVO → mismos módulos que inventario (ajusta si quieres restringir)
-  if (r === ROLE_ADMIN) {
-    return isAllowed(['/assets', '/reports']);
-  }
-
-  // Otros roles: sin restricciones adicionales
-  return true;
+  return bases.some(
+    (base) => pathname === base || pathname.startsWith(base + '/'),
+  );
 }
 
 /**
@@ -74,7 +70,6 @@ export default function Guard({ children }: GuardProps) {
 
     const token = getAccessToken();
     if (!token) {
-      // Sin token → a login
       router.replace('/login');
       return;
     }
@@ -84,7 +79,6 @@ export default function Guard({ children }: GuardProps) {
       role = localStorage.getItem('user_role');
     }
 
-    // Si la ruta NO está permitida para este rol, redirige a su home
     if (!isPathAllowedForRole(role, pathname)) {
       const target = getHomeForRole(role);
       if (pathname !== target) {
