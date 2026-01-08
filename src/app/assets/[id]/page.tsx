@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Asset, type Paginated, type Movement } from '@/lib/api';
+import { api } from '@/lib/api';
 import StatusBadge from '@/components/ui/status-badge';
 import MovementActions from '@/components/assets/movement-actions';
 import { useState } from 'react';
@@ -21,6 +21,90 @@ type Attachment = {
   createdAt: string;
 };
 
+/* === Tipo para el usuario autenticado (/api/auth/me) === */
+type Me = {
+  id: string;
+  email: string;
+  mainRole?: string | null;
+  role?: string | null;
+  roleCode?: string | null;
+  currentRole?: { code?: string | null } | null;
+  roles?: Array<string | { code?: string | null }>;
+};
+
+/* === Tipos mínimos para el activo y movimientos === */
+type ApiAsset = {
+  id: string;
+  tag: string;
+  name: string;
+  status: string;
+  lifeState?: string | null;
+  category?: { name?: string | null } | null;
+  site?: { name?: string | null } | null;
+  assignedWarehouse?: { name?: string | null } | null;
+  currentLocationLabel?: string | null;
+  currentLocation?: { name?: string | null } | null;
+  brand?: string | null;
+  model?: string | null;
+  serial?: string | null;
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  invimaCode?: string | null;
+  purchaseCost?: number | null;
+  purchaseDate?: string | null;
+  warrantyUntil?: string | null;
+  acquisitionType?: string | null;
+  createdAt?: string | null;
+  currentCustodian?: {
+    fullName?: string | null;
+    department?: string | null;
+    municipality?: string | null;
+    address?: string | null;
+  } | null;
+  attachments?: Attachment[];
+};
+
+type MovementRow = {
+  id: string;
+  type: string;
+  createdAt: string;
+  fromLocation?: { name: string } | null;
+  toLocation?: { name: string } | null;
+  toPerson?: { fullName: string } | null;
+  reference?: string | null;
+  notes?: string | null;
+  createdBy?: { name?: string | null; email?: string | null } | null;
+};
+
+type Paginated<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+};
+
+/* Helper para extraer el rol de forma robusta */
+function extractRole(me?: Me | null): string {
+  if (!me) return '';
+
+  if (typeof me.mainRole === 'string' && me.mainRole) return me.mainRole;
+  if (typeof me.role === 'string' && me.role) return me.role;
+  if (typeof me.roleCode === 'string' && me.roleCode) return me.roleCode;
+
+  if (me.currentRole && typeof me.currentRole.code === 'string' && me.currentRole.code) {
+    return me.currentRole.code;
+  }
+
+  if (Array.isArray(me.roles) && me.roles.length > 0) {
+    const r0 = me.roles[0];
+    if (typeof r0 === 'string') return r0;
+    if (r0 && typeof (r0 as any).code === 'string') return (r0 as any).code;
+  }
+
+  return '';
+}
+
 export default function AssetDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -29,23 +113,40 @@ export default function AssetDetail() {
   const API_BASE_URL =
     (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '') || '';
 
+  // Usuario actual (para permisos)
+  const meQ = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => (await api.get<Me>('/api/auth/me')).data,
+  });
+
+  const rawRole = extractRole(meQ.data ?? null);
+  const roleUpper = rawRole
+    ? rawRole.toString().trim().toUpperCase().replace(/[\s-]+/g, '_')
+    : '';
+
+  // Solo estos roles pueden gestionar el activo
+  const canManage =
+    roleUpper === 'SUPER_ADMIN' || roleUpper === 'ACTIVOS_FIJOS';
+
+  // Debug en consola del navegador para ver qué viene de /api/auth/me
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.log('[AssetDetail] /api/auth/me =>', meQ.data, 'roleUpper =', roleUpper);
+  }
+
   const assetQ = useQuery({
     queryKey: ['asset', id],
-    // Tipamos para que acepte attachments opcionales
     queryFn: async () =>
-      (
-        await api.get<Asset & { attachments?: Attachment[] }>(`/api/assets/${id}`)
-      ).data,
+      (await api.get<ApiAsset & { attachments?: Attachment[] }>(`/api/assets/${id}`))
+        .data,
   });
 
   const histQ = useQuery({
     queryKey: ['movements', id],
     queryFn: async () =>
-      (
-        await api.get<Paginated<Movement>>(`/api/movements/by-asset/${id}`, {
-          params: { pageSize: 50 },
-        })
-      ).data,
+      (await api.get<Paginated<MovementRow>>(`/api/movements/by-asset/${id}`, {
+        params: { pageSize: 50 },
+      })).data,
   });
 
   const refetchAll = () => {
@@ -62,7 +163,7 @@ export default function AssetDetail() {
   if (assetQ.isLoading) return <p className="p-4">Cargando…</p>;
   if (!assetQ.data) return <p className="p-4">No encontrado.</p>;
 
-  const a = assetQ.data as any;
+  const a = assetQ.data;
 
   // Helpers
   const fDate = (d?: string | null) =>
@@ -72,7 +173,7 @@ export default function AssetDetail() {
   const fMoney = (n?: number | string | null) =>
     n != null ? Number(n).toLocaleString('es-CO') : '—';
 
-  const lifeStatePill = (life?: string) => {
+  const lifeStatePill = (life?: string | null) => {
     const base =
       'px-2 py-1 rounded-lg text-[10px] font-semibold tracking-wide';
     const map: Record<string, string> = {
@@ -86,7 +187,7 @@ export default function AssetDetail() {
     const cls =
       map[life || 'ACTIVE'] ||
       'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
-    return <span className={`${base} ${cls}`}>{tLifeState(life)}</span>;
+    return <span className={`${base} ${cls}`}>{tLifeState(life || undefined)}</span>;
   };
 
   const custAddr = (cust?: any) => {
@@ -132,7 +233,7 @@ export default function AssetDetail() {
   const openPreview = (att: Attachment) => {
     const url = att.path.startsWith('http')
       ? att.path
-      : `${API_BASE_URL}${att.path}`; // p.ej. https://stockit-uyvn.onrender.com/uploads/...
+      : `${API_BASE_URL}${att.path}`;
     setPreviewUrl(url);
     setPreviewName(att.fileName || 'Anexo');
   };
@@ -161,31 +262,33 @@ export default function AssetDetail() {
           </div>
         </div>
 
-        {/* Acciones */}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <MovementActions assetId={id} onDone={refetchAll} />
-          <Link
-            href={`/assets/${id}/edit`}
-            className="px-3 py-2 rounded-lg border text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-            title="Editar activo"
-          >
-            Editar
-          </Link>
-          <Link
-            href={`/assets/${id}/anexos`}
-            className="px-3 py-2 rounded-lg border text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-            title="Gestionar anexos"
-          >
-            Anexos
-          </Link>
-          <button
-            onClick={() => setConfirmDel(true)}
-            className="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm hover:opacity-95"
-            title="Eliminar activo"
-          >
-            Eliminar
-          </button>
-        </div>
+        {/* Acciones (solo SUPER_ADMIN / ACTIVOS_FIJOS) */}
+        {canManage && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <MovementActions assetId={id} onDone={refetchAll} />
+            <Link
+              href={`/assets/${id}/edit`}
+              className="px-3 py-2 rounded-lg border text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              title="Editar activo"
+            >
+              Editar
+            </Link>
+            <Link
+              href={`/assets/${id}/anexos`}
+              className="px-3 py-2 rounded-lg border text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              title="Gestionar anexos"
+            >
+              Anexos
+            </Link>
+            <button
+              onClick={() => setConfirmDel(true)}
+              className="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm hover:opacity-95"
+              title="Eliminar activo"
+            >
+              Eliminar
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Información del activo */}
@@ -247,11 +350,11 @@ export default function AssetDetail() {
 
           <div>
             <span className="text-slate-500">Fecha de compra:</span>{' '}
-            <b>{fDate(a.purchaseDate)}</b>
+            <b>{fDate(a.purchaseDate ?? null)}</b>
           </div>
           <div>
             <span className="text-slate-500">Garantía hasta:</span>{' '}
-            <b>{fDate(a.warrantyUntil)}</b>
+            <b>{fDate(a.warrantyUntil ?? null)}</b>
           </div>
 
           <div>
@@ -260,7 +363,7 @@ export default function AssetDetail() {
           </div>
           <div>
             <span className="text-slate-500">Fecha de ingreso:</span>{' '}
-            <b>{fDate(a.createdAt)}</b>
+            <b>{fDate(a.createdAt ?? null)}</b>
           </div>
         </div>
       </div>
@@ -324,7 +427,7 @@ export default function AssetDetail() {
           <div className="rounded-lg border bg-white dark:bg-slate-900 max-h-[380px] overflow-auto">
             {histQ.data && histQ.data.items.length > 0 ? (
               <ul className="p-3 space-y-3">
-                {histQ.data.items.map((m) => (
+                {histQ.data.items.map((m: MovementRow) => (
                   <li key={m.id} className="rounded-lg border p-3">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">
@@ -393,12 +496,10 @@ export default function AssetDetail() {
         </div>
       )}
 
-      {/* Modal de confirmación de borrado */}
-      {confirmDel && (
+      {/* Modal de confirmación de borrado (solo si puede gestionar) */}
+      {canManage && confirmDel && (
         <div className="fixed inset-0 bg-black/30 grid place-items-center p-4">
-          <div className="w-full max-w-sm rounded-xl border bg-white dark:bg-slate-9
-
-00 p-4 space-y-3">
+          <div className="w-full max-w-sm rounded-xl border bg-white dark:bg-slate-900 p-4 space-y-3">
             <h4 className="font-medium">Eliminar activo</h4>
             <p className="text-sm text-slate-600">
               ¿Seguro que deseas eliminar{' '}

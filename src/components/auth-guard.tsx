@@ -23,7 +23,7 @@ const HOME_BY_ROLE: Record<string, string> = {
 // Rutas permitidas por rol (prefijos)
 const ALLOWED_PATHS_BY_ROLE: Record<string, string[]> = {
   [ROLE_DRIVER]: ['/routes'],
-  [ROLE_INVENTORY]: ['/assets', '/routes', '/people', '/entregas', '/reports'],
+  [ROLE_INVENTORY]: ['/assets', '/routes', '/people', '/entregas', '/reportes'],
   // Si quieres que el admin vea más cosas, agrégalas aquí
   [ROLE_ADMIN]: ['/assets', '/reports'],
 };

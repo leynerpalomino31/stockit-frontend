@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ChangeEvent } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -12,6 +12,15 @@ type User     = { id: string; email: string; name?: string | null };
 type Category = { id: string; name: string; code?: string | null };
 type Site     = { id: string; name: string };
 type Location = { id: string; name: string; siteId?: string | null };
+
+// Opciones de estado para inventario
+const STATUS_OPTIONS = [
+  { value: 'IN_STOCK',  label: 'En bodega' },
+  { value: 'ASSIGNED',  label: 'Asignado' },
+  { value: 'IN_REPAIR', label: 'En reparación' },
+  { value: 'LOST',      label: 'Perdido' },
+  { value: 'DISPOSED',  label: 'De baja' },
+];
 
 export default function ReportesPage() {
   // Combos base
@@ -70,12 +79,13 @@ export default function ReportesPage() {
   const [invSiteIds, setInvSiteIds] = useState<string[]>([]);
   const [invWarehouseIds, setInvWarehouseIds] = useState<string[]>([]);
 
-  // Helper genérico para <select multiple>
-  function handleMultiChange(setter: (values: string[]) => void) {
-    return (e: ChangeEvent<HTMLSelectElement>) => {
-      const values = Array.from(e.target.selectedOptions).map((o) => o.value);
-      setter(values);
-    };
+  // Helper genérico para checkboxes
+  function toggleValue(current: string[], value: string, checked: boolean) {
+    if (checked) {
+      if (current.includes(value)) return current;
+      return [...current, value];
+    }
+    return current.filter((v) => v !== value);
   }
 
   // Helper descarga
@@ -100,7 +110,6 @@ export default function ReportesPage() {
 
   /* ========================
      INVENTARIO (CSV)
-     - Filtros multiselección
   ========================== */
   const downloadInventory = () => {
     const params = new URLSearchParams();
@@ -123,7 +132,6 @@ export default function ReportesPage() {
      MOVIMIENTOS (CSV)
   ========================== */
 
-  // Movimientos por equipo
   const downloadMovByAsset = () => {
     if (!assetId) return toast.error('Selecciona un equipo');
     const p = new URLSearchParams();
@@ -134,7 +142,6 @@ export default function ReportesPage() {
     download(`/api/reports/movements.csv?${qs}`, 'movimientos_por_equipo.csv');
   };
 
-  // Movimientos por custodio
   const downloadMovByPerson = () => {
     if (!personId) return toast.error('Selecciona un usuario/custodio');
     const p = new URLSearchParams();
@@ -145,7 +152,6 @@ export default function ReportesPage() {
     download(`/api/reports/movements.csv?${qs}`, 'movimientos_por_usuario.csv');
   };
 
-  // Movimientos por usuario administrativo
   const downloadMovByAdmin = () => {
     if (!adminId) return toast.error('Selecciona un usuario administrativo');
     const p = new URLSearchParams();
@@ -156,7 +162,6 @@ export default function ReportesPage() {
     download(`/api/reports/movements.csv?${qs}`, 'movimientos_por_admin.csv');
   };
 
-  // Movimientos globales (sin filtros de entidad)
   const downloadMovAll = () => {
     const p = new URLSearchParams();
     if (from) p.set('from', from);
@@ -194,73 +199,107 @@ export default function ReportesPage() {
               />
             </div>
 
-            {/* Estado (multi) */}
+            {/* Estado (checklist) */}
             <div>
-              <label className="text-xs text-slate-500">Estado (multi)</label>
-              <select
-                multiple
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
-                value={invStatus}
-                onChange={handleMultiChange(setInvStatus)}
-              >
-                <option value="IN_STOCK">En bodega</option>
-                <option value="ASSIGNED">Asignado</option>
-                <option value="IN_REPAIR">En reparación</option>
-                <option value="LOST">Perdido</option>
-                <option value="DISPOSED">De baja</option>
-              </select>
+              <label className="text-xs text-slate-500 block mb-1">Estado (multi)</label>
+              <div className="border rounded-lg px-3 py-2 max-h-40 overflow-auto space-y-1">
+                {STATUS_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={invStatus.includes(opt.value)}
+                      onChange={(e) =>
+                        setInvStatus((prev) => toggleValue(prev, opt.value, e.target.checked))
+                      }
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
 
-            {/* Categoría (multi) */}
+            {/* Categoría (checklist) */}
             <div>
-              <label className="text-xs text-slate-500">Categoría (multi)</label>
-              <select
-                multiple
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
-                value={invCategoryIds}
-                onChange={handleMultiChange(setInvCategoryIds)}
-              >
+              <label className="text-xs text-slate-500 block mb-1">Categoría (multi)</label>
+              <div className="border rounded-lg px-3 py-2 max-h-40 overflow-auto space-y-1">
                 {categoriesQ.data?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.code ? ` (${c.code})` : ''}
-                  </option>
+                  <label
+                    key={c.id}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={invCategoryIds.includes(c.id)}
+                      onChange={(e) =>
+                        setInvCategoryIds((prev) =>
+                          toggleValue(prev, c.id, e.target.checked),
+                        )
+                      }
+                    />
+                    <span>
+                      {c.name}
+                      {c.code ? ` (${c.code})` : ''}
+                    </span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
 
-            {/* Sede (multi) */}
+            {/* Sede (checklist) */}
             <div>
-              <label className="text-xs text-slate-500">Sede (multi)</label>
-              <select
-                multiple
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
-                value={invSiteIds}
-                onChange={handleMultiChange(setInvSiteIds)}
-              >
+              <label className="text-xs text-slate-500 block mb-1">Sede (multi)</label>
+              <div className="border rounded-lg px-3 py-2 max-h-40 overflow-auto space-y-1">
                 {sitesQ.data?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={invSiteIds.includes(s.id)}
+                      onChange={(e) =>
+                        setInvSiteIds((prev) =>
+                          toggleValue(prev, s.id, e.target.checked),
+                        )
+                      }
+                    />
+                    <span>{s.name}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
 
-            {/* Bodega asignada (multi) */}
+            {/* Bodega asignada (checklist) */}
             <div className="md:col-span-2 lg:col-span-4">
-              <label className="text-xs text-slate-500">Bodega asignada (multi)</label>
-              <select
-                multiple
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm min-h-[100px]"
-                value={invWarehouseIds}
-                onChange={handleMultiChange(setInvWarehouseIds)}
-              >
+              <label className="text-xs text-slate-500 block mb-1">
+                Bodega asignada (multi)
+              </label>
+              <div className="border rounded-lg px-3 py-2 max-h-48 overflow-auto space-y-1">
                 {locationsQ.data?.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
+                  <label
+                    key={l.id}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={invWarehouseIds.includes(l.id)}
+                      onChange={(e) =>
+                        setInvWarehouseIds((prev) =>
+                          toggleValue(prev, l.id, e.target.checked),
+                        )
+                      }
+                    />
+                    <span>{l.name}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
           </div>
 
