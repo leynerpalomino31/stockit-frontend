@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import Guard from '@/components/auth-guard';
 
-type Person   = { id: string; fullName: string };
+type Person   = { id: string; fullName: string; documentId?: string | null };
 type Asset    = { id: string; tag: string; name: string };
 type User     = { id: string; email: string; name?: string | null };
 type Category = { id: string; name: string; code?: string | null };
@@ -22,55 +22,85 @@ const STATUS_OPTIONS = [
   { value: 'DISPOSED',  label: 'De baja' },
 ];
 
+// Tamaño grande para combos de reportes
+const BIG_PAGE_SIZE = 10_000;
+
 export default function ReportesPage() {
   // Combos base
   const peopleQ = useQuery({
     queryKey: ['people-mini'],
     queryFn: async () =>
-      (await api.get<{ items: Person[] }>('/api/people', { params: { pageSize: 500 } })).data.items,
+      (
+        await api.get<{ items: Person[] }>('/api/people', {
+          params: { pageSize: BIG_PAGE_SIZE },
+        })
+      ).data.items,
   });
 
   const assetsQ = useQuery({
     queryKey: ['assets-mini'],
     queryFn: async () =>
-      (await api.get<{ items: Asset[] }>('/api/assets', { params: { pageSize: 500 } })).data.items,
+      (
+        await api.get<{ items: Asset[] }>('/api/assets', {
+          params: { pageSize: BIG_PAGE_SIZE },
+        })
+      ).data.items,
   });
 
   const usersQ = useQuery({
     queryKey: ['users-mini'],
     queryFn: async () =>
-      (await api.get<{ items: User[] }>('/api/users', { params: { pageSize: 500 } })).data.items,
+      (
+        await api.get<{ items: User[] }>('/api/users', {
+          params: { pageSize: BIG_PAGE_SIZE },
+        })
+      ).data.items,
   });
 
   // Combos para filtros de inventario
   const categoriesQ = useQuery({
     queryKey: ['categories-mini'],
     queryFn: async () =>
-      (await api.get<{ items: Category[] }>('/api/catalog/categories', { params: { pageSize: 1000 } }))
-        .data.items,
+      (
+        await api.get<{ items: Category[] }>('/api/catalog/categories', {
+          params: { pageSize: 1000 },
+        })
+      ).data.items,
   });
 
   const sitesQ = useQuery({
     queryKey: ['sites-mini'],
     queryFn: async () =>
-      (await api.get<{ items: Site[] }>('/api/sites', { params: { pageSize: 500 } })).data.items,
+      (
+        await api.get<{ items: Site[] }>('/api/sites', {
+          params: { pageSize: 500 },
+        })
+      ).data.items,
   });
 
   const locationsQ = useQuery({
     queryKey: ['locations-mini'],
     queryFn: async () =>
-      (await api.get<{ items: Location[] }>('/api/catalog/locations', { params: { pageSize: 2000 } }))
-        .data.items,
+      (
+        await api.get<{ items: Location[] }>('/api/catalog/locations', {
+          params: { pageSize: 2000 },
+        })
+      ).data.items,
   });
 
   // Filtros de fecha (movimientos)
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
 
-  // Filtros movimientos
-  const [assetId, setAssetId] = useState<string>('');
-  const [personId, setPersonId] = useState<string>('');
-  const [adminId, setAdminId] = useState<string>('');
+  // Filtros movimientos (checklists)
+  const [movAssetIds, setMovAssetIds] = useState<string[]>([]);
+  const [movPersonIds, setMovPersonIds] = useState<string[]>([]);
+  const [movAdminIds, setMovAdminIds] = useState<string[]>([]);
+
+  // Búsquedas locales en listas de movimientos
+  const [assetSearch, setAssetSearch] = useState('');
+  const [personSearch, setPersonSearch] = useState('');
+  const [adminSearch, setAdminSearch] = useState('');
 
   // Filtros inventario
   const [invQ, setInvQ] = useState('');
@@ -129,49 +159,54 @@ export default function ReportesPage() {
   };
 
   /* ========================
-     MOVIMIENTOS (CSV)
+     MOVIMIENTOS (CSV unificado)
   ========================== */
+  const downloadMovements = () => {
+    const params = new URLSearchParams();
 
-  const downloadMovByAsset = () => {
-    if (!assetId) return toast.error('Selecciona un equipo');
-    const p = new URLSearchParams();
-    p.set('assetId', assetId);
-    if (from) p.set('from', from);
-    if (to) p.set('to', to);
-    const qs = p.toString();
-    download(`/api/reports/movements.csv?${qs}`, 'movimientos_por_equipo.csv');
-  };
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
 
-  const downloadMovByPerson = () => {
-    if (!personId) return toast.error('Selecciona un usuario/custodio');
-    const p = new URLSearchParams();
-    p.set('personId', personId);
-    if (from) p.set('from', from);
-    if (to) p.set('to', to);
-    const qs = p.toString();
-    download(`/api/reports/movements.csv?${qs}`, 'movimientos_por_usuario.csv');
-  };
+    movAssetIds.forEach((id) => params.append('assetId', id));
+    movPersonIds.forEach((id) => params.append('personId', id));
+    movAdminIds.forEach((id) => params.append('createdById', id));
 
-  const downloadMovByAdmin = () => {
-    if (!adminId) return toast.error('Selecciona un usuario administrativo');
-    const p = new URLSearchParams();
-    p.set('createdById', adminId);
-    if (from) p.set('from', from);
-    if (to) p.set('to', to);
-    const qs = p.toString();
-    download(`/api/reports/movements.csv?${qs}`, 'movimientos_por_admin.csv');
-  };
-
-  const downloadMovAll = () => {
-    const p = new URLSearchParams();
-    if (from) p.set('from', from);
-    if (to) p.set('to', to);
-    const qs = p.toString();
+    const qs = params.toString();
     const url = qs
       ? `/api/reports/movements.csv?${qs}`
       : '/api/reports/movements.csv';
-    download(url, 'movimientos_globales.csv');
+
+    download(url, 'movimientos.csv');
   };
+
+  // Filtros locales para mostrar listas (activos / custodios / admins)
+  const filteredAssets =
+    assetsQ.data?.filter((a) => {
+      const term = assetSearch.trim().toLowerCase();
+      if (!term) return true;
+      return (
+        a.tag.toLowerCase().includes(term) ||
+        a.name.toLowerCase().includes(term)
+      );
+    }) ?? [];
+
+  const filteredPeople =
+    peopleQ.data?.filter((p) => {
+      const term = personSearch.trim().toLowerCase();
+      if (!term) return true;
+      return (
+        (p.fullName || '').toLowerCase().includes(term) ||
+        (p.documentId || '').toLowerCase().includes(term)
+      );
+    }) ?? [];
+
+  const filteredAdmins =
+    usersQ.data?.filter((u) => {
+      const term = adminSearch.trim().toLowerCase();
+      if (!term) return true;
+      const base = `${u.name || ''} ${u.email || ''}`.toLowerCase();
+      return base.includes(term);
+    }) ?? [];
 
   return (
     <Guard>
@@ -318,7 +353,7 @@ export default function ReportesPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <h2 className="font-medium">Movimientos (CSV)</h2>
             <p className="text-xs text-slate-500">
-              Puedes filtrar por equipo, custodio, usuario administrativo o descargar todo.
+              Filtra por activos, custodios y usuarios administrativos. Si no seleccionas nada, trae todos los movimientos del rango.
             </p>
           </div>
 
@@ -344,89 +379,114 @@ export default function ReportesPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-            {/* Por equipo */}
+          {/* Checklists de movimientos */}
+          <div className="grid gap-3 md:grid-cols-1 lg:grid-cols-3">
+            {/* Activos fijos */}
             <div className="border rounded-lg p-3 flex flex-col gap-2">
-              <p className="text-sm font-medium">Por equipo</p>
-              <select
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                value={assetId}
-                onChange={(e) => setAssetId(e.target.value)}
-              >
-                <option value="">— Seleccionar equipo —</option>
-                {assetsQ.data?.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.tag} — {a.name}
-                  </option>
+              <p className="text-sm font-medium">Activos fijos</p>
+              <input
+                className="w-full rounded-lg border px-3 py-1.5 text-xs mb-2"
+                placeholder="Buscar por código / nombre"
+                value={assetSearch}
+                onChange={(e) => setAssetSearch(e.target.value)}
+              />
+              <div className="border rounded-lg px-3 py-2 max-h-60 overflow-auto space-y-1">
+                {filteredAssets.map((a) => (
+                  <label
+                    key={a.id}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={movAssetIds.includes(a.id)}
+                      onChange={(e) =>
+                        setMovAssetIds((prev) =>
+                          toggleValue(prev, a.id, e.target.checked),
+                        )
+                      }
+                    />
+                    <span>
+                      {a.tag} — {a.name}
+                    </span>
+                  </label>
                 ))}
-              </select>
-              <button
-                className="self-end rounded-lg border px-3 py-2 text-sm"
-                onClick={downloadMovByAsset}
-              >
-                Descargar
-              </button>
+              </div>
             </div>
 
-            {/* Por custodio */}
+            {/* Usuarios (custodios) */}
             <div className="border rounded-lg p-3 flex flex-col gap-2">
-              <p className="text-sm font-medium">Por usuario (custodio)</p>
-              <select
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                value={personId}
-                onChange={(e) => setPersonId(e.target.value)}
-              >
-                <option value="">— Seleccionar usuario —</option>
-                {peopleQ.data?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.fullName}
-                  </option>
+              <p className="text-sm font-medium">Usuarios (custodios)</p>
+              <input
+                className="w-full rounded-lg border px-3 py-1.5 text-xs mb-2"
+                placeholder="Buscar por nombre / documento"
+                value={personSearch}
+                onChange={(e) => setPersonSearch(e.target.value)}
+              />
+              <div className="border rounded-lg px-3 py-2 max-h-60 overflow-auto space-y-1">
+                {filteredPeople.map((p) => (
+                  <label
+                    key={p.id}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={movPersonIds.includes(p.id)}
+                      onChange={(e) =>
+                        setMovPersonIds((prev) =>
+                          toggleValue(prev, p.id, e.target.checked),
+                        )
+                      }
+                    />
+                    <span>
+                      {p.fullName}
+                      {p.documentId ? ` — ${p.documentId}` : ''}
+                    </span>
+                  </label>
                 ))}
-              </select>
-              <button
-                className="self-end rounded-lg border px-3 py-2 text-sm"
-                onClick={downloadMovByPerson}
-              >
-                Descargar
-              </button>
+              </div>
             </div>
 
-            {/* Por usuario administrativo */}
+            {/* Usuarios administrativos */}
             <div className="border rounded-lg p-3 flex flex-col gap-2">
-              <p className="text-sm font-medium">Por usuario administrativo</p>
-              <select
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                value={adminId}
-                onChange={(e) => setAdminId(e.target.value)}
-              >
-                <option value="">— Seleccionar usuario —</option>
-                {usersQ.data?.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name || u.email}
-                  </option>
+              <p className="text-sm font-medium">Usuarios administrativos</p>
+              <input
+                className="w-full rounded-lg border px-3 py-1.5 text-xs mb-2"
+                placeholder="Buscar por nombre / correo"
+                value={adminSearch}
+                onChange={(e) => setAdminSearch(e.target.value)}
+              />
+              <div className="border rounded-lg px-3 py-2 max-h-60 overflow-auto space-y-1">
+                {filteredAdmins.map((u) => (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-2 text-xs sm:text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={movAdminIds.includes(u.id)}
+                      onChange={(e) =>
+                        setMovAdminIds((prev) =>
+                          toggleValue(prev, u.id, e.target.checked),
+                        )
+                      }
+                    />
+                    <span>{u.name || u.email}</span>
+                  </label>
                 ))}
-              </select>
-              <button
-                className="self-end rounded-lg border px-3 py-2 text-sm"
-                onClick={downloadMovByAdmin}
-              >
-                Descargar
-              </button>
+              </div>
             </div>
+          </div>
 
-            {/* Global */}
-            <div className="border rounded-lg p-3 flex flex-col gap-2">
-              <p className="text-sm font-medium">Global (sin filtro por entidad)</p>
-              <p className="text-xs text-slate-500">
-                Usa solo el rango de fechas; si no eliges fechas, descarga todos los movimientos.
-              </p>
-              <button
-                className="self-end rounded-lg border px-3 py-2 text-sm"
-                onClick={downloadMovAll}
-              >
-                Descargar global
-              </button>
-            </div>
+          <div className="flex justify-end">
+            <button
+              className="rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm"
+              onClick={downloadMovements}
+            >
+              Descargar movimientos
+            </button>
           </div>
         </div>
       </section>
