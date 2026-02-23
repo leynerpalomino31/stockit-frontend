@@ -313,8 +313,13 @@ export default function AssetTable() {
         {items.map((a) => {
           const anyA: any = a;
           const custName = a.currentCustodian?.fullName ?? null;
-          const custid = a.currentCustodian?.id ?? null;
-          const uiLocation = (anyA.currentLocationLabel as string | undefined) ?? null;
+
+          // 🔹 Aquí estaba el error: antes usabas `.doc`
+          const custDoc =
+            (anyA.currentCustodian?.documentId as string | undefined) ?? null;
+
+          const uiLocation =
+            (anyA.currentLocationLabel as string | undefined) ?? null;
           const siteName = anyA.site?.name ?? null;
 
           return (
@@ -349,11 +354,17 @@ export default function AssetTable() {
                     </span>
                     <span className="truncate">
                       Documento:{' '}
-                      <b title={custid ?? '—'}>{custid ?? '—'}</b>
+                      <b title={custDoc ?? '—'}>{custDoc ?? '—'}</b>
                     </span>
                     {siteName && (
                       <span className="truncate">
                         Sede: <b title={siteName}>{siteName}</b>
+                      </span>
+                    )}
+                    {uiLocation && (
+                      <span className="truncate">
+                        Ubicación:{' '}
+                        <b title={uiLocation}>{uiLocation}</b>
                       </span>
                     )}
                   </div>

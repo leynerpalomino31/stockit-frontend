@@ -60,6 +60,7 @@ type ApiAsset = {
     department?: string | null;
     municipality?: string | null;
     address?: string | null;
+    documentId?: string | null;
   } | null;
   attachments?: Attachment[];
 };
@@ -103,6 +104,20 @@ function extractRole(me?: Me | null): string {
   }
 
   return '';
+}
+
+/* Traducción del tipo de adquisición (enum → etiqueta ES) */
+function tAcquisitionType(acq?: string | null): string {
+  if (!acq) return '—';
+  const key = acq.toUpperCase();
+  const map: Record<string, string> = {
+    PURCHASE: 'COMPRA',
+    LEASE: 'ARRENDAMIENTO',
+    DONATION: 'DONACIÓN',
+    INTERNAL: 'INTERNA',
+    OTHER: 'OTRO',
+  };
+  return map[key] ?? acq;
 }
 
 export default function AssetDetail() {
@@ -359,7 +374,7 @@ export default function AssetDetail() {
 
           <div>
             <span className="text-slate-500">Tipo de adquisición:</span>{' '}
-            <b>{a.acquisitionType ?? '—'}</b>
+            <b>{tAcquisitionType(a.acquisitionType)}</b>
           </div>
           <div>
             <span className="text-slate-500">Fecha de ingreso:</span>{' '}

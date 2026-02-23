@@ -122,7 +122,7 @@ export default function AssetsPage() {
       setTransferError(null);
       try {
         const [resAssets, resSites, resLocations] = await Promise.all([
-          api.get('/api/assets', { params: { pageSize: 500 } }),
+          api.get('/api/assets', { params: { pageSize: 10000 } }),
           api.get('/api/sites'),
           api.get('/api/catalog/locations'), // bodegas / ubicaciones
         ]);

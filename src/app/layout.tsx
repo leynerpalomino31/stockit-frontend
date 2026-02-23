@@ -6,7 +6,7 @@ import AppShell from '@/components/layout/app-shell';
 import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
-  title: 'STOCKit',
+  title: 'ACTIVOS FIJOS MTD',
   description: 'Gestión de inventarios de activos',
 };
 
