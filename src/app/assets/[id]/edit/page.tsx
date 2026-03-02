@@ -10,6 +10,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 /* ────────────────────────────────────────────────────────────────────────────
    Tipos
 ──────────────────────────────────────────────────────────────────────────── */
+type MaintenanceFrequency = 'ANUAL' | 'SEMESTRAL' | 'TRIMESTRAL' | 'NO_APLICA';
+
 type AssetDetail = {
   id: string;
   tag: string;
@@ -22,12 +24,16 @@ type AssetDetail = {
   invoiceNumber?: string | null;
   invimaCode?: string | null;
   purchaseCost?: number | null;
-  purchaseDate?: string | null;   // ISO
-  warrantyUntil?: string | null;  // ISO
+  purchaseDate?: string | null; // ISO
+  warrantyUntil?: string | null; // ISO
   acquisitionType?: string | null;
   riskLevel?: string | null;
-  status: 'IN_STOCK'|'ASSIGNED'|'IN_REPAIR'|'LOST'|'DISPOSED';
-  lifeState?: 'ACTIVE'|'INACTIVE'|'RETIRED'|null;
+
+  // ✅ NUEVO
+  maintenanceFrequency?: MaintenanceFrequency | null;
+
+  status: 'IN_STOCK' | 'ASSIGNED' | 'IN_REPAIR' | 'LOST' | 'DISPOSED';
+  lifeState?: 'ACTIVE' | 'INACTIVE' | 'RETIRED' | null;
   photoUrl?: string | null;
   notes?: string | null;
 
@@ -54,8 +60,12 @@ type AssetUpdatePayload = {
   warrantyUntil?: string | null;
   acquisitionType?: string | null;
   riskLevel?: string | null;
-  status?: 'IN_STOCK'|'ASSIGNED'|'IN_REPAIR'|'LOST'|'DISPOSED';
-  lifeState?: 'ACTIVE'|'INACTIVE'|'RETIRED'|null;
+
+  // ✅ NUEVO
+  maintenanceFrequency?: MaintenanceFrequency | null;
+
+  status?: 'IN_STOCK' | 'ASSIGNED' | 'IN_REPAIR' | 'LOST' | 'DISPOSED';
+  lifeState?: 'ACTIVE' | 'INACTIVE' | 'RETIRED' | null;
   photoUrl?: string | null;
   notes?: string | null;
 
@@ -66,21 +76,36 @@ type AssetUpdatePayload = {
 };
 
 const ESTADOS_OPERATIVOS = [
-  { value: 'IN_STOCK',   label: 'En bodega' },
-  { value: 'ASSIGNED',   label: 'Asignado' },
-  { value: 'IN_REPAIR',  label: 'En reparación' },
-  { value: 'LOST',       label: 'Perdido' },
-  { value: 'DISPOSED',   label: 'De baja (dispuesto)' },
+  { value: 'IN_STOCK', label: 'En bodega' },
+  { value: 'ASSIGNED', label: 'Asignado' },
+  { value: 'IN_REPAIR', label: 'En reparación' },
+  { value: 'LOST', label: 'Perdido' },
+  { value: 'DISPOSED', label: 'De baja (dispuesto)' },
 ] as const;
 
 const ESTADOS_DE_VIDA = [
-  { value: 'ACTIVE',   label: 'Activo' },
+  { value: 'ACTIVE', label: 'Activo' },
   { value: 'INACTIVE', label: 'Inactivo' },
-  { value: 'RETIRED',  label: 'Retirado' },
+  { value: 'RETIRED', label: 'Retirado' },
 ] as const;
 
-const TIPOS_ADQUISICION = ['Compra', 'Arrendamiento', 'Donación', 'Reposición', 'Otro'] as const;
-const NIVELES_RIESGO = ['Bajo', 'Medio', 'Alto', 'Crítico'] as const;
+const TIPOS_ADQUISICION = [
+  'Compra',
+  'Arrendamiento',
+  'Donación',
+  'Reposición',
+  'Otro',
+] as const;
+
+const NIVELES_RIESGO = ['I', 'IIA', 'IIB', 'III', 'NO APLICA'] as const;
+
+// ✅ NUEVO: Frecuencia mantenimiento
+const FRECUENCIAS_MANTENIMIENTO: Array<{ value: MaintenanceFrequency; label: string }> = [
+  { value: 'ANUAL', label: 'Anual' },
+  { value: 'SEMESTRAL', label: 'Semestral' },
+  { value: 'TRIMESTRAL', label: 'Trimestral' },
+  { value: 'NO_APLICA', label: 'No aplica' },
+];
 
 /* ────────────────────────────────────────────────────────────────────────────
    Utils
@@ -105,7 +130,7 @@ function useAsset(id?: string) {
   return useQuery({
     queryKey: ['asset', id],
     enabled: !!id,
-    queryFn: async () => (await api.get<AssetDetail>(`/api/assets/${id}`)).data
+    queryFn: async () => (await api.get<AssetDetail>(`/api/assets/${id}`)).data,
   });
 }
 function useUpdateAsset(id: string) {
@@ -115,7 +140,7 @@ function useUpdateAsset(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['asset', id] });
       qc.invalidateQueries({ queryKey: ['assets'] });
-    }
+    },
   });
 }
 
@@ -128,8 +153,8 @@ export default function EditAssetPage() {
 
   const { data: asset, isLoading } = useAsset(id);
   const cats = useCategories();
-  const locs = useLocations();   // Ubicaciones (incluye bodegas)
-  const sites = useSites();      // Sedes
+  const locs = useLocations(); // Ubicaciones (incluye bodegas)
+  const sites = useSites(); // Sedes
 
   const upd = useUpdateAsset(String(id));
 
@@ -149,6 +174,10 @@ export default function EditAssetPage() {
     warrantyUntil: '',
     acquisitionType: '',
     riskLevel: '',
+
+    // ✅ NUEVO
+    maintenanceFrequency: 'NO_APLICA',
+
     status: 'IN_STOCK',
     lifeState: 'ACTIVE',
     photoUrl: '',
@@ -161,6 +190,11 @@ export default function EditAssetPage() {
 
   useEffect(() => {
     if (!asset || form._init) return;
+
+    const mf =
+      (asset.maintenanceFrequency as MaintenanceFrequency | null | undefined) ??
+      'NO_APLICA';
+
     setForm({
       _init: true,
       tag: asset.tag || '',
@@ -177,6 +211,10 @@ export default function EditAssetPage() {
       warrantyUntil: toYYYYMMDD(asset.warrantyUntil),
       acquisitionType: asset.acquisitionType || '',
       riskLevel: asset.riskLevel || '',
+
+      // ✅ NUEVO
+      maintenanceFrequency: mf || 'NO_APLICA',
+
       status: asset.status || 'IN_STOCK',
       lifeState: asset.lifeState || 'ACTIVE',
       photoUrl: asset.photoUrl || '',
@@ -232,7 +270,7 @@ export default function EditAssetPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return toast.error('El nombre es obligatorio');
-    if (!form.tag.trim())  return toast.error('El código (tag) es obligatorio');
+    if (!form.tag.trim()) return toast.error('El código (tag) es obligatorio');
 
     // Si está IN_STOCK y no hay ubicación, autocompleta con la bodega asignada
     const shouldDefaultToWarehouse =
@@ -250,11 +288,16 @@ export default function EditAssetPage() {
       supplierName: form.supplierName || null,
       invoiceNumber: form.invoiceNumber || null,
       invimaCode: form.invimaCode || null,
-      purchaseCost: form.purchaseCost === '' ? null : numOrNull(String(form.purchaseCost)),
+      purchaseCost:
+        form.purchaseCost === '' ? null : numOrNull(String(form.purchaseCost)),
       purchaseDate: form.purchaseDate || null,
       warrantyUntil: form.warrantyUntil || null,
       acquisitionType: form.acquisitionType || null,
       riskLevel: form.riskLevel || null,
+
+      // ✅ NUEVO
+      maintenanceFrequency: (form.maintenanceFrequency || null) as MaintenanceFrequency | null,
+
       status: form.status,
       lifeState: form.lifeState || null,
       photoUrl: form.photoUrl || null,
@@ -263,7 +306,7 @@ export default function EditAssetPage() {
       siteId: form.siteId || null,
       currentLocationId: shouldDefaultToWarehouse
         ? form.assignedWarehouseId
-        : (form.currentLocationId || null),
+        : form.currentLocationId || null,
 
       assignedWarehouseId: form.assignedWarehouseId || null,
     };
@@ -284,7 +327,10 @@ export default function EditAssetPage() {
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">Editar activo</h1>
 
-      <form onSubmit={onSubmit} className="space-y-4 border rounded-2xl bg-white dark:bg-slate-900 p-4">
+      <form
+        onSubmit={onSubmit}
+        className="space-y-4 border rounded-2xl bg-white dark:bg-slate-900 p-4"
+      >
         {/* Identificación */}
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="grid gap-1.5">
@@ -293,7 +339,7 @@ export default function EditAssetPage() {
             </label>
             <input
               value={form.tag}
-              onChange={e=>set('tag', e.target.value)}
+              onChange={(e) => set('tag', e.target.value)}
               placeholder="ACT-0001"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -305,7 +351,7 @@ export default function EditAssetPage() {
             </label>
             <input
               value={form.name}
-              onChange={e=>set('name', e.target.value)}
+              onChange={(e) => set('name', e.target.value)}
               placeholder="Portátil Dell"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -315,7 +361,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Serie</label>
             <input
               value={form.serial}
-              onChange={e=>set('serial', e.target.value)}
+              onChange={(e) => set('serial', e.target.value)}
               placeholder="SN-ABC-123"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -325,12 +371,14 @@ export default function EditAssetPage() {
             <label className="text-sm">Categoría</label>
             <select
               value={form.categoryId}
-              onChange={e=>set('categoryId', e.target.value)}
+              onChange={(e) => set('categoryId', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
               <option value="">—</option>
               {cats.data?.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
           </div>
@@ -342,7 +390,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Sede</label>
             <select
               value={form.siteId || ''}
-              onChange={e => {
+              onChange={(e) => {
                 const newSiteId = e.target.value;
                 set('siteId', newSiteId);
                 // Al cambiar de sede, limpiamos bodega y ubicación
@@ -352,8 +400,10 @@ export default function EditAssetPage() {
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
               <option value="">—</option>
-              {sites.data?.map((s: any)=>(
-                <option key={s.id} value={s.id}>{s.name}</option>
+              {sites.data?.map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
               ))}
             </select>
           </div>
@@ -362,16 +412,19 @@ export default function EditAssetPage() {
             <label className="text-sm">Bodega asignada</label>
             <select
               value={form.assignedWarehouseId || ''}
-              onChange={e=>set('assignedWarehouseId', e.target.value)}
+              onChange={(e) => set('assignedWarehouseId', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
               <option value="">—</option>
-              {warehouses.map((l: any)=>(
-                <option key={l.id} value={l.id}>{l.name}</option>
+              {warehouses.map((l: any) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
               ))}
             </select>
             <p className="text-xs text-slate-500">
-              Si el activo está <b>En bodega</b> y no indicas ubicación actual, se usará esta bodega.
+              Si el activo está <b>En bodega</b> y no indicas ubicación actual, se
+              usará esta bodega.
             </p>
           </div>
 
@@ -379,12 +432,14 @@ export default function EditAssetPage() {
             <label className="text-sm">Ubicación actual</label>
             <select
               value={form.currentLocationId || ''}
-              onChange={e=>set('currentLocationId', e.target.value)}
+              onChange={(e) => set('currentLocationId', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
               <option value="">—</option>
-              {locationOptions.map((l: any)=>(
-                <option key={l.id} value={l.id}>{l.name}</option>
+              {locationOptions.map((l: any) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
               ))}
             </select>
           </div>
@@ -396,7 +451,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Marca</label>
             <input
               value={form.brand}
-              onChange={e=>set('brand', e.target.value)}
+              onChange={(e) => set('brand', e.target.value)}
               placeholder="Dell"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -405,7 +460,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Modelo</label>
             <input
               value={form.model}
-              onChange={e=>set('model', e.target.value)}
+              onChange={(e) => set('model', e.target.value)}
               placeholder="Latitude 5440"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -418,7 +473,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Proveedor</label>
             <input
               value={form.supplierName}
-              onChange={e=>set('supplierName', e.target.value)}
+              onChange={(e) => set('supplierName', e.target.value)}
               placeholder="Acme S.A."
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -427,7 +482,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Factura</label>
             <input
               value={form.invoiceNumber}
-              onChange={e=>set('invoiceNumber', e.target.value)}
+              onChange={(e) => set('invoiceNumber', e.target.value)}
               placeholder="FV-12345"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -436,7 +491,7 @@ export default function EditAssetPage() {
             <label className="text-sm">Invima</label>
             <input
               value={form.invimaCode}
-              onChange={e=>set('invimaCode', e.target.value)}
+              onChange={(e) => set('invimaCode', e.target.value)}
               placeholder="INV-0000"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -450,7 +505,7 @@ export default function EditAssetPage() {
             <input
               inputMode="decimal"
               value={form.purchaseCost}
-              onChange={e=>set('purchaseCost', e.target.value)}
+              onChange={(e) => set('purchaseCost', e.target.value)}
               placeholder="2500000"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
@@ -460,7 +515,7 @@ export default function EditAssetPage() {
             <input
               type="date"
               value={form.purchaseDate}
-              onChange={e=>set('purchaseDate', e.target.value)}
+              onChange={(e) => set('purchaseDate', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
           </div>
@@ -469,44 +524,74 @@ export default function EditAssetPage() {
             <input
               type="date"
               value={form.warrantyUntil}
-              onChange={e=>set('warrantyUntil', e.target.value)}
+              onChange={(e) => set('warrantyUntil', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
           </div>
         </div>
 
         {/* Clasificaciones */}
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid sm:grid-cols-4 gap-3">
           <div className="grid gap-1.5">
             <label className="text-sm">Tipo de adquisición</label>
             <select
               value={form.acquisitionType}
-              onChange={e=>set('acquisitionType', e.target.value)}
+              onChange={(e) => set('acquisitionType', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
               <option value="">—</option>
-              {TIPOS_ADQUISICION.map(t => <option key={t} value={t}>{t}</option>)}
+              {TIPOS_ADQUISICION.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
           </div>
+
           <div className="grid gap-1.5">
             <label className="text-sm">Nivel de riesgo</label>
             <select
               value={form.riskLevel}
-              onChange={e=>set('riskLevel', e.target.value)}
+              onChange={(e) => set('riskLevel', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
               <option value="">—</option>
-              {NIVELES_RIESGO.map(t => <option key={t} value={t}>{t}</option>)}
+              {NIVELES_RIESGO.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
           </div>
+
+          {/* ✅ NUEVO */}
+          <div className="grid gap-1.5">
+            <label className="text-sm">Frecuencia mantenimiento</label>
+            <select
+              value={form.maintenanceFrequency || 'NO_APLICA'}
+              onChange={(e) => set('maintenanceFrequency', e.target.value)}
+              className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
+            >
+              {FRECUENCIAS_MANTENIMIENTO.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid gap-1.5">
             <label className="text-sm">Estado operativo</label>
             <select
               value={form.status}
-              onChange={e=>set('status', e.target.value)}
+              onChange={(e) => set('status', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
-              {ESTADOS_OPERATIVOS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {ESTADOS_OPERATIVOS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -517,10 +602,14 @@ export default function EditAssetPage() {
             <label className="text-sm">Estado del activo</label>
             <select
               value={form.lifeState}
-              onChange={e=>set('lifeState', e.target.value)}
+              onChange={(e) => set('lifeState', e.target.value)}
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             >
-              {ESTADOS_DE_VIDA.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {ESTADOS_DE_VIDA.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -528,14 +617,18 @@ export default function EditAssetPage() {
             <label className="text-sm">Foto (URL)</label>
             <input
               value={form.photoUrl}
-              onChange={e=>set('photoUrl', e.target.value)}
+              onChange={(e) => set('photoUrl', e.target.value)}
               placeholder="https://tu-cdn.com/fotos/mi-activo.jpg"
               className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             />
             {previewSrc && (
               <div className="mt-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previewSrc} alt="Vista previa" className="h-28 w-auto rounded-lg border object-cover" />
+                <img
+                  src={previewSrc}
+                  alt="Vista previa"
+                  className="h-28 w-auto rounded-lg border object-cover"
+                />
               </div>
             )}
           </div>
@@ -546,7 +639,7 @@ export default function EditAssetPage() {
           <label className="text-sm">Notas</label>
           <textarea
             value={form.notes}
-            onChange={e=>set('notes', e.target.value)}
+            onChange={(e) => set('notes', e.target.value)}
             placeholder="Observaciones, mantenimientos, comentarios…"
             className="rounded-xl border px-3 py-2 text-sm bg-white dark:bg-slate-950"
             rows={3}

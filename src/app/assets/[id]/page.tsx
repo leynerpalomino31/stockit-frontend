@@ -54,6 +54,10 @@ type ApiAsset = {
   purchaseDate?: string | null;
   warrantyUntil?: string | null;
   acquisitionType?: string | null;
+
+  // ✅ NUEVO: frecuencia mantenimiento (viene del backend)
+  maintenanceFrequency?: 'ANUAL' | 'SEMESTRAL' | 'TRIMESTRAL' | 'NO_APLICA' | null;
+
   createdAt?: string | null;
   currentCustodian?: {
     fullName?: string | null;
@@ -118,6 +122,20 @@ function tAcquisitionType(acq?: string | null): string {
     OTHER: 'OTRO',
   };
   return map[key] ?? acq;
+}
+
+/* ✅ Traducción frecuencia mantenimiento (enum → etiqueta ES) */
+function tMaintenanceFrequency(v?: ApiAsset['maintenanceFrequency']): string {
+  if (!v) return '—';
+  const key = String(v).toUpperCase();
+  const map: Record<string, string> = {
+    ANUAL: 'ANUAL',
+    SEMESTRAL: 'SEMESTRAL',
+    TRIMESTRAL: 'TRIMESTRAL',
+    NO_APLICA: 'NO APLICA',
+    'NO APLICA': 'NO APLICA',
+  };
+  return map[key] ?? v;
 }
 
 export default function AssetDetail() {
@@ -331,6 +349,13 @@ export default function AssetDetail() {
             <span className="text-slate-500">Ubicación actual:</span>{' '}
             <b>{a.currentLocationLabel ?? a.currentLocation?.name ?? '—'}</b>
           </div>
+
+          {/* ✅ NUEVO */}
+          <div>
+            <span className="text-slate-500">Frecuencia mantenimiento:</span>{' '}
+            <b>{tMaintenanceFrequency(a.maintenanceFrequency ?? null)}</b>
+          </div>
+
           <div>
             <span className="text-slate-500">Marca:</span>{' '}
             <b>{a.brand ?? '—'}</b>

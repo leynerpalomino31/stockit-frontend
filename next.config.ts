@@ -1,14 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 👇 si ya tienes otras opciones, déjalas aquí
-  eslint: {
-    // ❌ No romper el build por errores de ESLint
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // ❌ No romper el build por errores de TypeScript
-    ignoreBuildErrors: true,
-  },
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+
+  // ✅ para despliegue fácil (artefacto autocontenido)
+  output: "standalone",
 };
 
 export default nextConfig;

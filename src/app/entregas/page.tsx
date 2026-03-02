@@ -15,6 +15,7 @@ type Person = {
   documentId?: string | null;
   finalStatus?: string | null;
   inactivityDate?: string | null;
+  userType?: string | null; // ya lo agregaste antes
 };
 
 type AssetStatus = 'IN_STOCK' | 'ASSIGNED' | string;
@@ -159,7 +160,7 @@ function SimplePicker<T extends { id: string; fullName?: string | null; email?: 
                       onChange(p.id);
                       setOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover.bg-slate-800 ${
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 ${
                       p.id === value ? 'bg-slate-50 dark:bg-slate-800' : ''
                     }`}
                   >
@@ -203,7 +204,12 @@ const UserPicker = (props: {
     onChange={props.onChange}
     disabled={props.disabled}
     placeholder={props.placeholder}
-    subtitleOf={(p: any) => p.documentId}
+    subtitleOf={(p: any) => {
+      const doc = p.documentId || '';
+      const tipo = p.userType || '';
+      const parts = [doc, tipo].filter(Boolean);
+      return parts.length ? parts.join(' - ') : null;
+    }}
   />
 );
 
@@ -268,6 +274,7 @@ export default function HandoverPage() {
   const [assetQ, setAssetQ] = useState('');
   const [pageSize, setPageSize] = useState<PageSizeOption>(10);
   const [page, setPage] = useState(1);
+  const [showOnlySelected, setShowOnlySelected] = useState(false); // NUEVO
 
   // Personas (catálogo)
   const peopleQ = useQuery({
@@ -327,19 +334,33 @@ export default function HandoverPage() {
   }, [allAssets.data, form.type, form.personId]);
 
   const visibleAssets = useMemo(() => {
+    let source = baseVisibleAssets;
+
+    // NUEVO: solo seleccionados
+    if (showOnlySelected && form.assetIds.length > 0) {
+      const idsSet = new Set(form.assetIds);
+      source = source.filter((a) => idsSet.has(a.id));
+    }
+
     const q = assetQ.trim().toLowerCase();
-    if (!q) return baseVisibleAssets;
-    return baseVisibleAssets.filter((a) => {
+    if (!q) return source;
+
+    return source.filter((a) => {
       const name = (a.name || '').toLowerCase();
       const tag = (a.tag || '').toLowerCase();
       const cat = (a.category?.name || '').toLowerCase();
       return name.includes(q) || tag.includes(q) || (!!cat && cat.includes(q));
     });
-  }, [baseVisibleAssets, assetQ]);
+  }, [baseVisibleAssets, assetQ, showOnlySelected, form.assetIds]);
 
   // Reset selección y motivo si cambia tipo o persona
   useEffect(() => {
     setForm((f) => ({ ...f, assetIds: [], reason: '' }));
+  }, [form.type, form.personId]);
+
+  // Cuando cambias tipo/persona, quita el filtro "solo seleccionados"
+  useEffect(() => {
+    setShowOnlySelected(false);
   }, [form.type, form.personId]);
 
   // Limpiar firma/contacto si es domicilio
@@ -361,7 +382,7 @@ export default function HandoverPage() {
   // Reset página cuando cambian filtros o tipo
   useEffect(() => {
     setPage(1);
-  }, [assetQ, form.type, form.personId, pageSize]);
+  }, [assetQ, form.type, form.personId, pageSize, showOnlySelected]);
 
   const totalItems = visibleAssets.length;
   const totalPages =
@@ -466,6 +487,7 @@ export default function HandoverPage() {
         driverId: null,
         scheduledDate: '',
       });
+      setShowOnlySelected(false);
 
       qc.invalidateQueries({ queryKey: ['assets-mini'] });
       qc.invalidateQueries({ queryKey: ['routes'] });
@@ -730,7 +752,17 @@ export default function HandoverPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-slate-500">
+              <div className="flex items-center gap-3 text-xs text-slate-500">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3"
+                    checked={showOnlySelected}
+                    onChange={(e) => setShowOnlySelected(e.target.checked)}
+                    disabled={form.assetIds.length === 0}
+                  />
+                  <span>Solo seleccionados</span>
+                </label>
                 <span>Mostrar:</span>
                 <select
                   className="rounded-lg border px-2 py-1 text-xs bg-white dark:bg-slate-950"
