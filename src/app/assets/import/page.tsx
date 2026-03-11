@@ -59,8 +59,9 @@ export default function ImportAssetsPage() {
 
       <div className="border rounded-xl bg-white dark:bg-slate-900 p-4 space-y-3">
         <p className="text-sm text-slate-600">
-          Sube un <b>CSV</b> (recomendado) o <b>JSON</b> con las columnas en <b>español</b>.
-          Los nombres admitidos coinciden con la plantilla.
+          Sube un <b>CSV</b> con las columnas en <b>español</b>. 
+          Si el código (tag) ya existe, el activo se <b>actualizará</b>. 
+          Si el código no existe, se <b>creará</b> un activo nuevo (recuerda que el campo "nombre" es obligatorio para crearlo).
         </p>
 
         <div className="rounded-lg border bg-slate-50 dark:bg-slate-800/40 p-3 text-xs leading-5 text-slate-700 dark:text-slate-300">

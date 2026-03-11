@@ -134,6 +134,7 @@ export default function ImportAssetsModal({ open, onOpenChange, onImported }: Pr
           <DialogTitle>Importar activos (CSV)</DialogTitle>
           <DialogDescription>
             Sube un archivo CSV con los campos que se muestran abajo. Puedes descargar una plantilla.
+            Habilitado para modificar y crear Activos
           </DialogDescription>
         </DialogHeader>
 
